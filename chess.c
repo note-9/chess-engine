@@ -88,6 +88,28 @@ const uint64_t not_file_h = 9187201950435737471ULL;
 const uint64_t not_file_hg = 4557430888798830399ULL;
 const uint64_t not_file_ab = 18229723555195321596ULL;
 
+const int bishop_relevant_occupancy_bits[64] = {
+  6, 5, 5, 5, 5, 5, 5, 6,
+  5, 5, 5, 5, 5, 5, 5, 5,
+  5, 5, 7, 7, 7, 7, 5, 5,
+  5, 5, 7, 9, 9, 7, 5, 5,
+  5, 5, 7, 9, 9, 7, 5, 5,
+  5, 5, 7, 7, 7, 7, 5, 5,
+  5, 5, 5, 5, 5, 5, 5, 5,
+  6, 5, 5, 5, 5, 5, 5, 6
+};
+
+const int rook_relevant_occupancy_bits[64] = {
+  12, 11, 11, 11, 11, 11, 11, 12,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  11, 10, 10, 10, 10, 10, 10, 11,
+  12, 11, 11, 11, 11, 11, 11, 12
+};
+
 uint64_t pawn_attacks[2][64];
 uint64_t knight_attacks[64];
 uint64_t king_attacks[64];
@@ -152,7 +174,40 @@ uint64_t mask_king_attacks(int square)
   return attacks_bitboard;
 }
 
-uint64_t mask_bishop_attacks(int square, uint64_t occupied)
+uint64_t mask_bishop_attacks(int square)
+{
+  uint64_t attacks_bitboard = 0;
+
+  int rank, file;
+  int target_rank = square / 8;
+  int target_file = square % 8;
+
+  for (rank = target_rank + 1, file = target_file + 1; rank <= 7 && file <= 7; rank++, file++) attacks_bitboard |= (1ULL << (rank * 8 + file));
+  for (rank = target_rank - 1, file = target_file + 1; rank >= 0 && file <= 7; rank--, file++) attacks_bitboard |= (1ULL << (rank * 8 + file));
+  for (rank = target_rank + 1, file = target_file - 1; rank <= 7 && file >= 0; rank++, file--) attacks_bitboard |= (1ULL << (rank * 8 + file));
+  for (rank = target_rank - 1, file = target_file - 1; rank >= 0 && file >= 0; rank--, file--) attacks_bitboard |= (1ULL << (rank * 8 + file));
+
+  return attacks_bitboard;
+}
+
+uint64_t mask_rook_attacks(int square)
+{
+  uint64_t attacks_bitboard = 0;
+
+  int rank, file;
+  int target_rank = square / 8;
+  int target_file = square % 8;
+
+  for (rank = target_rank + 1; rank <= 7; rank++) attacks_bitboard |= (1ULL << (rank * 8 + target_file));    
+  for (rank = target_rank - 1; rank >= 0; rank--) attacks_bitboard |= (1ULL << (rank * 8 + target_file));
+  for (file = target_file + 1; file <= 7; file++) attacks_bitboard |= (1ULL << (target_rank * 8 + file));
+  for (file = target_file - 1; file >= 0; file--) attacks_bitboard |= (1ULL << (target_rank * 8 + file));
+      
+  return attacks_bitboard;
+}
+
+
+uint64_t bishop_attacks_with_blocks(int square, uint64_t occupancy)
 {
   uint64_t attacks_bitboard = 0;
 
@@ -163,27 +218,28 @@ uint64_t mask_bishop_attacks(int square, uint64_t occupied)
   for (rank = target_rank + 1, file = target_file + 1; rank <= 7 && file <= 7; rank++, file++)
   {
     attacks_bitboard |= (1ULL << (rank * 8 + file));
-    if ((1ULL << (rank * 8 + file)) & occupied) break;
+    if ((1ULL << (rank * 8 + file)) & occupancy) break;
   }
   for (rank = target_rank - 1, file = target_file + 1; rank >= 0 && file <= 7; rank--, file++)
   {
     attacks_bitboard |= (1ULL << (rank * 8 + file));
-    if ((1ULL << (rank * 8 + file)) & occupied) break;
+    if ((1ULL << (rank * 8 + file)) & occupancy) break;
   }
   for (rank = target_rank + 1, file = target_file - 1; rank <= 7 && file >= 0; rank++, file--)
   {
     attacks_bitboard |= (1ULL << (rank * 8 + file)); 
-    if ((1ULL << (rank * 8 + file)) & occupied) break;
+    if ((1ULL << (rank * 8 + file)) & occupancy) break;
   }
   for (rank = target_rank - 1, file = target_file - 1; rank >= 0 && file >= 0; rank--, file--)
   {
     attacks_bitboard |= (1ULL << (rank * 8 + file));
-    if ((1ULL << (rank * 8 + file)) & occupied) break;
+    if ((1ULL << (rank * 8 + file)) & occupancy) break;
   }      
   return attacks_bitboard;
 }
 
-uint64_t mask_rook_attacks(int square, uint64_t occupied)
+
+uint64_t rook_attacks_with_blocks(int square, uint64_t occupancy)
 {
   uint64_t attacks_bitboard = 0;
 
@@ -194,25 +250,25 @@ uint64_t mask_rook_attacks(int square, uint64_t occupied)
   for (rank = target_rank + 1; rank <= 7; rank++)
   {
     attacks_bitboard |= (1ULL << (rank * 8 + target_file));
-    if ((1ULL << (rank * 8 + target_file)) & occupied) break;
+    if ((1ULL << (rank * 8 + target_file)) & occupancy) break;
   }
       
   for (rank = target_rank - 1; rank >= 0; rank--) 
   {
     attacks_bitboard |= (1ULL << (rank * 8 + target_file));
-    if ((1ULL << (rank * 8 + target_file)) & occupied) break;
+    if ((1ULL << (rank * 8 + target_file)) & occupancy) break;
   }
       
   for (file = target_file + 1; file <= 7; file++)
   {
-    attacks_bitboard |= (1ULL << (rank * 8 + target_file));
-    if ((1ULL << (rank * 8 + target_file)) & occupied) break;
+    attacks_bitboard |= (1ULL << (target_rank * 8 + file));
+    if ((1ULL << (target_rank * 8 + file)) & occupancy) break;
   }
   
   for (file = target_file - 1; file >= 0; file--)
   {
     attacks_bitboard |= (1ULL << (target_rank * 8 + file));
-    if ((1ULL << (rank * 8 + target_file)) & occupied) break;
+    if ((1ULL << (target_rank * 8 + file)) & occupancy) break;
   }
       
   return attacks_bitboard;
@@ -230,19 +286,35 @@ void init_leaper_attacks()
   }
 }
 
-void init_slider_attacks(uint64_t occupied)
+void init_slider_attacks(uint64_t occupancy)
 {
   for (int square = 0; square < 64; square++)
   {
-    bishop_attacks[square] = mask_bishop_attacks(square, occupied);
-    rook_attacks[square] = mask_rook_attacks(square, occupied);
+    bishop_attacks[square] = mask_bishop_attacks(square);
+    rook_attacks[square] = mask_rook_attacks(square);
   }
+}
+
+uint64_t set_occupancy(int index, int bits_in_mask, uint64_t attack_mask)
+{
+  uint64_t occupancy = 0ULL;
+
+  for (int count = 0; count < bits_in_mask; count++)
+  {
+    int square = get_ls1b_index(attack_mask);
+    
+    pop_bit(&attack_mask, square);
+
+    if (index & (1 << count)) occupancy |= (1ULL << square);
+  }
+  
+  return occupancy;
 }
 
 int main()
 {
   init_leaper_attacks();
-  uint64_t occupied = 0ULL;;
+  uint64_t occupancy = 0ULL;;
   printf("CHESS ENGINE\n");
  /* for (int square = 0; square < 64; square++)
   {
@@ -268,7 +340,7 @@ int main()
 */
   for (int square = 0; square < 64; square++)
   {
-    print_bitboard(mask_rook_attacks(square, occupied));
+    print_bitboard(mask_rook_attacks(square, occupancy));
   } 
   return 0;
 }
