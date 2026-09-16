@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
 enum {
@@ -15,6 +16,11 @@ enum {
 enum {
   white,
   black
+};
+
+enum {
+  rook,
+  bishop
 };
 
 const char *coordinates[] = {
@@ -311,36 +317,90 @@ uint64_t set_occupancy(int index, int bits_in_mask, uint64_t attack_mask)
   return occupancy;
 }
 
+uint32_t state = 1804289383;
+uint32_t get_random_u32_number()
+{
+  uint32_t number = state;
+
+  number ^= number << 13;
+  number ^= number >> 17;
+  number ^= number << 5;
+
+  state = number;
+
+  return number;
+}
+
+uint64_t get_random_u64_number()
+{
+  uint64_t n1, n2, n3, n4;
+
+  n1 = (uint64_t)(get_random_u32_number()) & 0xFFFF;
+  n2 = (uint64_t)(get_random_u32_number()) & 0xFFFF;
+  n3 = (uint64_t)(get_random_u32_number()) & 0xFFFF;
+  n4 = (uint64_t)(get_random_u32_number()) & 0xFFFF;
+
+  return n1 | (n2 << 16) | (n3 << 32) | (n4 << 48);
+}
+
+uint64_t generate_magic_number()
+{
+  return get_random_u64_number() & get_random_u64_number() & get_random_u64_number();  
+}
+
+uint64_t find_magic_number(int square, int relevant_bits, int bishop)
+{
+  uint64_t occupancy[4096];
+  uint64_t attacks[4096];
+  uint64_t used_attacks[4096];
+  uint64_t attack_mask = bishop ? mask_bishop_attacks(square) : mask_rook_attacks(square);
+
+  int occupancy_indices = 1 << relevant_bits;
+
+  for (int index = 0; index < occupancy_indices; index++)
+  {
+    occupancy[index] = set_occupancy(index, relevant_bits, attack_mask);
+
+    attacks[index] = bishop ? bishop_attacks_with_blocks(square, occupancy[index]) : rook_attacks_with_blocks(square, occupancy[index]);
+  }
+
+  for (int random_count = 0; random_count < 100000000; random_count++)
+  {
+    uint64_t magic_number = generate_magic_number();
+
+    if (count_bits((attack_mask * magic_number) & 0xFF00000000000000) < 6) continue;
+
+    memset(used_attacks, 0ULL, sizeof(used_attacks));
+    int index, fail;
+
+    for (index = 0, fail = 0; !fail && index < occupancy_indices; index++)
+    {
+      int magic_index = (int)((occupancy[index] * magic_number) >> (64 - relevant_bits));
+
+      if (used_attacks[magic_index] == 0ULL) used_attacks[magic_index] = attacks[index];
+      else if (used_attacks[magic_index] != attacks[index]) fail = 1;
+    }
+    if (!fail) return magic_number;
+  }
+  printf("   Magic Number Failed!");
+  return 0ULL;
+}
+
+void init_magic_numbers()
+{
+  for (int square = 0; square < 64; square++)
+  {
+    printf("  0x%lxULL\n", find_magic_number(square, rook_relevant_occupancy_bits[square], rook));
+  }
+  for (int square = 0; square < 64; square++)
+  {    
+    printf("  0x%lxULL\n", find_magic_number(square, bishop_relevant_occupancy_bits[square], bishop));
+  }
+}
+
 int main()
 {
   init_leaper_attacks();
-  uint64_t occupancy = 0ULL;;
-  printf("CHESS ENGINE\n");
- /* for (int square = 0; square < 64; square++)
-  {
-    print_bitboard(pawn_attacks[black][square]);
-  }
-  */
-/*  for (int square = 0; square < 64; square++)
-  {
-    print_bitboard(knight_attacks[square]);
-  }
-*/
- 
-/*  for (int square = 0; square < 64; square++)
-  {
-    print_bitboard(king_attacks[square]);
-  }
-*/
-
-/*  for (int square = 0; square < 64; square++)
-  {
-    print_bitboard(bishop_attacks[square]);
-  }
-*/
-  for (int square = 0; square < 64; square++)
-  {
-    print_bitboard(mask_rook_attacks(square, occupancy));
-  } 
+  init_magic_numbers();
   return 0;
 }
