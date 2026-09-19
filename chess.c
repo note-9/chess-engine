@@ -798,7 +798,21 @@ void print_attacked_squares(int side)
 
 static inline void generate_moves()
 {
-  
+  int src_sq, target_sq;
+  uint64_t bitboard, attacks;
+  for (int piece = P; piece <= k; piece++)
+  {
+
+    bitboard = piece_bitboards[piece];
+
+    if (side_to_move == white) {
+      
+    }
+    else
+    {
+      
+    }
+  }
 }
 
 void init_all()
