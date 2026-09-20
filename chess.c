@@ -799,19 +799,141 @@ void print_attacked_squares(int side)
 static inline void generate_moves()
 {
   int src_sq, target_sq;
+
   uint64_t bitboard, attacks;
+    
   for (int piece = P; piece <= k; piece++)
   {
-
     bitboard = piece_bitboards[piece];
+        
+    if (side_to_move == white)
+    {
+      if (piece == P)
+      {
+        while (bitboard)
+        {
+          src_sq = get_ls1b_index(bitboard);
+          target_sq = src_sq - 8;
+            
+          if (!(target_sq < a8) && !get_bit(occupancy_bitboards[both], target_sq))
+          {
+            if (src_sq >= a7 && src_sq <= h7)
+            {
+              printf("pawn promotion: %s%sq\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sr\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sb\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sn\n", coordinates[src_sq], coordinates[target_sq]);
+            }
+            else
+            {
+              printf("pawn push: %s%s\n", coordinates[src_sq], coordinates[target_sq]);
+                         
+              if ((src_sq >= a2 && src_sq <= h2) && !get_bit(occupancy_bitboards[both], target_sq - 8)) printf("double pawn push: %s%s\n", coordinates[src_sq], coordinates[target_sq - 8]);
+            }
+          }
+          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[black];
+          while (attacks)
+          {
+            target_sq = get_ls1b_index(attacks);
+            
+            if (src_sq >= a7 && src_sq <= h7)
+            {
+              printf("pawn promotion with capture: %s%sq\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sr\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sb\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sn\n", coordinates[src_sq], coordinates[target_sq]);
+            }
+            else printf("pawn capture: %s%s\n", coordinates[src_sq], coordinates[target_sq]);
+                         
+              pop_bit(&attacks, target_sq);
+          }       
 
-    if (side_to_move == white) {
-      
+          if (enpassant != no_sq)
+          {
+            uint64_t enpassant_attacks = pawn_attacks[side_to_move][src_sq] & (1ULL << enpassant);
+            if (enpassant_attacks)
+            {
+              int target_enpassant = get_ls1b_index(enpassant_attacks);
+              printf("paen enpassant capture: %s%s\n", coordinates[src_sq], coordinates[target_enpassant]);
+            }
+          }
+          pop_bit(&bitboard, src_sq);
+        }
+      }
+      if (piece == K)
+      {
+        
+      }
     }
     else
     {
-      
+      if (piece == p)
+      {
+        while (bitboard)
+        {
+          src_sq = get_ls1b_index(bitboard);
+                   
+          target_sq = src_sq + 8;
+                  
+          if (!(target_sq > h1) && !get_bit(occupancy_bitboards[both], target_sq))
+          {
+            if (src_sq >= a2 && src_sq <= h2)
+            {
+              printf("pawn promotion: %s%sq\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sr\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sb\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion: %s%sn\n", coordinates[src_sq], coordinates[target_sq]);
+            }
+                      
+            else
+            {
+              printf("pawn push: %s%s\n", coordinates[src_sq], coordinates[target_sq]);
+                          
+              if ((src_sq >= a7 && src_sq <= h7) && !get_bit(occupancy_bitboards[both], target_sq + 8)) printf("double pawn push: %s%s\n", coordinates[src_sq], coordinates[target_sq + 8]);
+            }
+          }
+                  
+          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[white];
+          while (attacks)
+          {
+            target_sq = get_ls1b_index(attacks);
+            
+            if (src_sq >= a2 && src_sq <= h2)
+            {
+              printf("pawn promotion with capture: %s%sq\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sr\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sb\n", coordinates[src_sq], coordinates[target_sq]);
+              printf("pawn promotion with capture: %s%sn\n", coordinates[src_sq], coordinates[target_sq]);
+            }
+            else printf("pawn capture: %s%s\n", coordinates[src_sq], coordinates[target_sq]);
+                         
+              pop_bit(&attacks, target_sq);
+          }       
+
+          if (enpassant != no_sq)
+          {
+            uint64_t enpassant_attacks = pawn_attacks[side_to_move][src_sq] & (1ULL << enpassant);
+            if (enpassant_attacks)
+            {
+              int target_enpassant = get_ls1b_index(enpassant_attacks);
+              printf("paen enpassant capture: %s%s\n", coordinates[src_sq], coordinates[target_enpassant]);
+            }
+          }
+          
+          pop_bit(&bitboard, src_sq);
+        }
+      }
     }
+        
+        // genarate knight moves
+        
+        // generate bishop moves
+        
+        // generate rook moves
+        
+        // generate queen moves
+        
+        // generate king moves
   }
 }
 
@@ -826,8 +948,8 @@ int main()
 {
   init_all();
 
-  parse_fen(start_position);
+  parse_fen(tricky_position);
   print_board();
-  print_attacked_squares(white);
+  generate_moves();
   return 0;
 }
