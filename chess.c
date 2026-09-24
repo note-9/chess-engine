@@ -1182,6 +1182,172 @@ void init_all()
   init_slider_attacks(rook);
 }
 
+typedef struct{
+  uint64_t piece_bitboards[12];
+  uint64_t occupancy_bitboards[3];
+
+  int side_to_move;
+  int enpassant;
+  int castle;
+} board_state;
+
+static inline void copy_board(board_state *state)
+{
+  memcpy(state->piece_bitboards, piece_bitboards, sizeof(piece_bitboards));
+  memcpy(state->occupancy_bitboards, occupancy_bitboards, sizeof(occupancy_bitboards));
+  state->side_to_move = side_to_move;
+  state->enpassant = enpassant;
+  state->castle = castle;
+}
+
+static inline void restore_board(board_state *state)
+{
+  memcpy(piece_bitboards, state->piece_bitboards, sizeof(piece_bitboards));
+  memcpy(occupancy_bitboards, state->occupancy_bitboards, sizeof(occupancy_bitboards));
+  side_to_move = state->side_to_move;
+  enpassant = state->enpassant;
+  castle = state->castle;
+}
+
+enum {all_moves, only_capture};
+
+const int castling_rights[64] = {
+   7, 15, 15, 15,  3, 15, 15, 11,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  15, 15, 15, 15, 15, 15, 15, 15,
+  13, 15, 15, 15, 12, 15, 15, 14
+};
+
+static inline int make_move(uint32_t move, int move_flag)
+{
+  if (move_flag == all_moves)
+  {
+    board_state state;
+    copy_board(&state);
+
+    int src_sq = get_move_src(move);
+    int target_sq = get_move_target(move);
+    int piece = get_move_piece(move);
+    int promoted = get_move_promoted(move);
+    int capture = is_move_capture(move);
+    int double_push = is_move_double_push(move);
+    int enpassant = is_move_enpassant(move);
+    int castling = is_move_castling(move);
+
+    pop_bit(&piece_bitboards[piece], src_sq);
+    set_bit(&piece_bitboards[piece], target_sq);
+
+    if (capture)
+    {
+      int start_piece, end_piece;
+
+      if (side_to_move == white)
+      {
+        start_piece = p;
+        end_piece = k;
+      }
+      else
+      {
+        start_piece = P;
+        end_piece = K;
+      }
+
+      for (int bb_piece = start_piece; bb_piece <= end_piece; bb_piece++)
+      {
+        if (get_bit(piece_bitboards[bb_piece], target_sq))
+        {
+          pop_bit(&piece_bitboards[bb_piece], target_sq);
+          break;
+        }
+      }
+    }
+
+    if (promoted)
+    {
+      pop_bit(&piece_bitboards[(side_to_move == white) ? P : p], target_sq);
+      
+      set_bit(&piece_bitboards[promoted], target_sq);
+      
+    }
+
+    if (enpassant)
+    {
+      (side_to_move == white) ? pop_bit(&piece_bitboards[p], target_sq + 8) : pop_bit(&piece_bitboards[P], target_sq - 8);
+    }
+    enpassant = no_sq;
+
+    if (double_push)
+    {
+      (side_to_move == white) ? (enpassant = target_sq + 8) : (enpassant = target_sq - 8);
+    }
+
+    if (castling)
+    {
+      switch (target_sq)
+      {
+        case (g1):
+          pop_bit(&piece_bitboards[R], h1);
+          set_bit(&piece_bitboards[R], f1);
+          break;
+        
+        case (c1):
+          pop_bit(&piece_bitboards[R], a1);
+          set_bit(&piece_bitboards[R], d1);
+          break;
+        
+        case (g8):
+          pop_bit(&piece_bitboards[r], h8);
+          set_bit(&piece_bitboards[r], f8);
+          break;
+        
+        case (c8):
+          pop_bit(&piece_bitboards[r], a8);
+          set_bit(&piece_bitboards[r], d8);
+          break;
+      }
+    }
+    castle &= castling_rights[src_sq];
+    castle &= castling_rights[target_sq];
+    
+    memset(occupancy_bitboards, 0ULL, sizeof(occupancy_bitboards));
+
+    for (int bb_piece = P; bb_piece <= K; bb_piece++)
+    {
+      occupancy_bitboards[white] |= piece_bitboards[bb_piece];
+    }
+    for (int bb_piece = p; bb_piece <= k; bb_piece++)
+    {
+      occupancy_bitboards[black] |= piece_bitboards[bb_piece];
+    }
+    occupancy_bitboards[both] |= occupancy_bitboards[white];
+    occupancy_bitboards[both] |= occupancy_bitboards[black];
+
+    side_to_move ^= 1;
+
+    //checking legality of moves
+    if (is_square_attacked((side_to_move == white) ? get_ls1b_index(piece_bitboards[k]) : get_ls1b_index(piece_bitboards[K]), side_to_move))
+    {
+      restore_board(&state);
+      return 0;
+    }
+    else
+    {
+      //return legal move
+      return 1;
+    }
+  }
+
+  else
+  {
+    if (is_move_capture(move)) make_move(move, all_moves);
+    else return 0;
+  }
+}
+
 int main()
 {
   init_all();
@@ -1189,8 +1355,25 @@ int main()
   parse_fen(tricky_position);
   print_board();
   moves move_list[1];
-  move_list->count = 0;
   generate_moves(move_list);
-  print_move_list(move_list);
+
+  for (int move_count = 0; move_count < move_list->count; move_count++)
+  {
+    uint32_t move = move_list->moves[move_count];
+
+    board_state state;
+    copy_board(&state);
+
+    if (!make_move(move, all_moves)) continue;
+
+    print_board();
+    getchar();
+    
+    restore_board(&state);
+    
+    print_board();
+    getchar();
+  }
+  
   return 0;
 }
