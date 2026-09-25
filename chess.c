@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <sys/time.h>
 
 #define empty_board "8/8/8/8/8/8/8/8 w - - "
 #define start_position "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
@@ -867,7 +868,8 @@ static inline void add_move(moves *move_list, uint32_t move)
 //for uci purposes
 void print_move(uint32_t move)
 {
-  printf("%s%s%c\n", coordinates[get_move_src(move)], coordinates[get_move_target(move)], promoted_pieces[get_move_promoted(move)]);
+  if (get_move_promoted(move)) printf("%s%s%c\n", coordinates[get_move_src(move)], coordinates[get_move_target(move)], promoted_pieces[get_move_promoted(move)]);
+  else printf("%s%s\n", coordinates[get_move_src(move)], coordinates[get_move_target(move)]);
 }
 
 
@@ -962,19 +964,19 @@ static inline void generate_moves(moves *move_list)
 
       if (piece == K)
       {
-        if (castle && wk)
+        if (castle & wk)
         {
           if (!get_bit(occupancy_bitboards[both], f1) && !get_bit(occupancy_bitboards[both], g1))
           {
-            if(!is_square_attacked(e1, black) && !is_square_attacked(f1, black) && !is_square_attacked(g1, black)) add_move(move_list, encode_move(e1, g1, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e1, black) && !is_square_attacked(f1, black)) add_move(move_list, encode_move(e1, g1, piece, 0, 0, 0, 0, 1));
           }
         }
 
-        if (castle && wq)
+        if (castle & wq)
         {
           if (!get_bit(occupancy_bitboards[both], d1) && !get_bit(occupancy_bitboards[both], c1) && !get_bit(occupancy_bitboards[both], b1))
           {
-            if(!is_square_attacked(e1, black) && !is_square_attacked(d1, black) && !is_square_attacked(c1, black)) add_move(move_list, encode_move(e1, c1, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e1, black) && !is_square_attacked(d1, black)) add_move(move_list, encode_move(e1, c1, piece, 0, 0, 0, 0, 1));
           }
         }
       }
@@ -1039,19 +1041,19 @@ static inline void generate_moves(moves *move_list)
       }
       if (piece == k)
       {
-        if (castle && bk)
+        if (castle & bk)
         {
           if (!get_bit(occupancy_bitboards[both], f8) && !get_bit(occupancy_bitboards[both], g8))
           {
-            if(!is_square_attacked(e8, white) && !is_square_attacked(f8, white) && !is_square_attacked(g8, white)) add_move(move_list, encode_move(e8, g8, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e8, white) && !is_square_attacked(f8, white)) add_move(move_list, encode_move(e8, g8, piece, 0, 0, 0, 0, 1));
           }
         }
 
-        if (castle && bq)
+        if (castle & bq)
         {
           if (!get_bit(occupancy_bitboards[both], d8) && !get_bit(occupancy_bitboards[both], c8) && !get_bit(occupancy_bitboards[both], b8))
           {
-            if(!is_square_attacked(e8, white) && !is_square_attacked(d8, white) && !is_square_attacked(c8, white)) add_move(move_list, encode_move(e8, c8, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e8, white) && !is_square_attacked(d8, white)) add_move(move_list, encode_move(e8, c8, piece, 0, 0, 0, 0, 1));
           }
         }
       }
@@ -1175,13 +1177,6 @@ static inline void generate_moves(moves *move_list)
   }
 }
 
-void init_all()
-{
-  init_leaper_attacks();
-  init_slider_attacks(bishop);
-  init_slider_attacks(rook);
-}
-
 typedef struct{
   uint64_t piece_bitboards[12];
   uint64_t occupancy_bitboards[3];
@@ -1235,7 +1230,7 @@ static inline int make_move(uint32_t move, int move_flag)
     int promoted = get_move_promoted(move);
     int capture = is_move_capture(move);
     int double_push = is_move_double_push(move);
-    int enpassant = is_move_enpassant(move);
+    int enpass = is_move_enpassant(move);
     int castling = is_move_castling(move);
 
     pop_bit(&piece_bitboards[piece], src_sq);
@@ -1274,7 +1269,7 @@ static inline int make_move(uint32_t move, int move_flag)
       
     }
 
-    if (enpassant)
+    if (enpass)
     {
       (side_to_move == white) ? pop_bit(&piece_bitboards[p], target_sq + 8) : pop_bit(&piece_bitboards[P], target_sq - 8);
     }
@@ -1327,25 +1322,94 @@ static inline int make_move(uint32_t move, int move_flag)
     occupancy_bitboards[both] |= occupancy_bitboards[black];
 
     side_to_move ^= 1;
-
     //checking legality of moves
     if (is_square_attacked((side_to_move == white) ? get_ls1b_index(piece_bitboards[k]) : get_ls1b_index(piece_bitboards[K]), side_to_move))
     {
       restore_board(&state);
       return 0;
     }
-    else
-    {
-      //return legal move
-      return 1;
-    }
+    else return 1;
   }
-
   else
   {
     if (is_move_capture(move)) make_move(move, all_moves);
     else return 0;
   }
+  return 0;
+}
+
+int get_time_ms()
+{
+  struct timeval time_val;
+  gettimeofday(&time_val, NULL);
+  return time_val.tv_sec * 1000 + time_val.tv_usec / 1000;
+}
+
+long nodes;
+
+static inline void perft_driver(int depth)
+{
+  if (depth == 0)
+  {
+    nodes++;
+    return;
+  }
+    
+  moves move_list[1];
+    
+  generate_moves(move_list);
+    
+  for (int move_count = 0; move_count < move_list->count; move_count++)
+  {
+    board_state state;  
+    copy_board(&state);
+        
+    if (!make_move(move_list->moves[move_count], all_moves)) continue;
+        
+    perft_driver(depth - 1);
+      
+    restore_board(&state);
+  }
+}
+
+void perft_test(int depth)
+{
+  printf("\nPerformance test\n\n");
+    
+  moves move_list[1];
+    
+  generate_moves(move_list);
+    
+  long start = get_time_ms();
+    
+  for (int move_count = 0; move_count < move_list->count; move_count++)
+  {   
+    board_state state;
+    copy_board(&state);
+        
+    if (!make_move(move_list->moves[move_count], all_moves)) continue;
+        
+    long cummulative_nodes = nodes;
+        
+    perft_driver(depth - 1);
+        
+    long old_nodes = nodes - cummulative_nodes;
+        
+    restore_board(&state);
+        
+    printf("move: %s%s%c  nodes: %ld\n", coordinates[get_move_src(move_list->moves[move_count])], coordinates[get_move_target(move_list->moves[move_count])], get_move_promoted(move_list->moves[move_count]) ? promoted_pieces[get_move_promoted(move_list->moves[move_count])] : ' ', old_nodes);
+  }
+    
+  printf("\nDepth: %d\n", depth);
+  printf("Nodes: %ld\n", nodes);
+  printf("Time: %ld\n\n", get_time_ms() - start);
+}
+
+void init_all()
+{
+  init_leaper_attacks();
+  init_slider_attacks(bishop);
+  init_slider_attacks(rook);
 }
 
 int main()
@@ -1354,26 +1418,8 @@ int main()
 
   parse_fen(tricky_position);
   print_board();
-  moves move_list[1];
-  generate_moves(move_list);
 
-  for (int move_count = 0; move_count < move_list->count; move_count++)
-  {
-    uint32_t move = move_list->moves[move_count];
-
-    board_state state;
-    copy_board(&state);
-
-    if (!make_move(move, all_moves)) continue;
-
-    print_board();
-    getchar();
-    
-    restore_board(&state);
-    
-    print_board();
-    getchar();
-  }
+  perft_test(5);
   
   return 0;
 }

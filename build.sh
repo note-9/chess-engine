@@ -1,2 +1,2 @@
-gcc chess.c -o chess
+gcc -Ofast chess.c -o chess
 ./chess
