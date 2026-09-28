@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -1405,6 +1406,12 @@ void perft_test(int depth)
   printf("Time: %ld\n\n", get_time_ms() - start);
 }
 
+void search_position(int depth)
+{
+  printf("bestmove d2d4\n");
+}
+
+//UCI stuff
 uint32_t parse_move(char *move_string)
 {
   moves move_list[1];
@@ -1436,6 +1443,89 @@ uint32_t parse_move(char *move_string)
   return 0;
 }
 
+void parse_position(char *command)
+{
+  command += 9;
+  char *curr_char = command;
+  if (strncmp(command, "startpos", 8) == 0) parse_fen(start_position);
+  else
+  {
+    curr_char = strstr(command, "fen");
+
+    if (curr_char == NULL) parse_fen(start_position);
+
+    else
+    {
+      curr_char += 4;
+      parse_fen(curr_char);
+    }
+  }
+  curr_char = strstr(command, "moves");
+  if (curr_char != NULL)
+  {
+    curr_char += 6;
+
+    while (*curr_char)
+    {
+      uint32_t move = parse_move(curr_char);  
+      if (move == 0) break;
+      make_move(move, all_moves);
+
+      while(*curr_char && *curr_char != ' ') curr_char++;
+      curr_char++;
+    }
+  }
+  print_board();
+}
+
+void parse_go(char *command)
+{
+  int depth = -1;
+  char *curr_depth = NULL;
+  if ((curr_depth = strstr(command, "depth"))) depth = atoi(curr_depth + 6);
+  else depth = 6;
+
+  search_position(depth);
+}
+
+void uci_loop()
+{
+  setbuf(stdin, NULL);
+  setbuf(stdout, NULL);
+
+  char input[2000];
+  
+  printf("id name BBC\n");
+  printf("id name Arthur\n");
+  printf("uciok\n");
+
+  while (1)
+  {
+    memset(input, 0, sizeof(input));
+
+    fflush(stdout);
+
+    if (!fgets(input, 2000, stdin)) continue;
+    if (input[0] == '\n') continue;
+
+    if (strncmp(input, "is ready", 7) == 0)
+    {
+      printf("readyok\n");
+      continue;
+    }
+    else if (strncmp(input, "position", 8) == 0) parse_position(input);
+    else if (strncmp(input, "ucinewgame", 10) == 0) parse_position("position startpos");
+    else if (strncmp(input, "go", 2) == 0) parse_go(input);
+    else if (strncmp(input, "quit", 4) == 0) break;
+    else if (strncmp(input, "uci", 3) == 0)
+    {
+      printf("id name BBC\n");
+      printf("id name Arthur\n");
+      printf("uciok\n");
+    }
+  }
+}
+
 void init_all()
 {
   init_leaper_attacks();
@@ -1447,18 +1537,7 @@ int main()
 {
   init_all();
 
-  parse_fen(start_position);
-  print_board();
-
-  uint32_t move = parse_move("e2e4");
-  if (move)
-  {
-    make_move(move, all_moves);
-    print_board();
-  }
-  else
-  {
-    printf("illegal move!");
-  }
+  uci_loop();  
+  
   return 0;
 }
