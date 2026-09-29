@@ -4,11 +4,13 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/time.h>
+#include <sys/types.h>
 
 #define empty_board "8/8/8/8/8/8/8/8 w - - "
 #define start_position "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 "
 #define tricky_position "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 "
 #define killer_position "rnbqkb1r/pp1p1pPp/8/2p1pP2/1P1P4/3P3P/P1P1P3/RNBQKBNR w KQkq e6 0 1 "
+#define cmk_position "r2q1rk1/ppp2ppp/2n1bn2/2b1p3/3pP3/3P1NPP/PPP1NPB1/R1BQ1RK1 b - - 0 9 "
 
 enum {
   a8, b8, c8, d8, e8, f8, g8, h8,
@@ -869,8 +871,8 @@ static inline void add_move(moves *move_list, uint32_t move)
 //for uci purposes
 void print_move(uint32_t move)
 {
-  if (get_move_promoted(move)) printf("%s%s%c\n", coordinates[get_move_src(move)], coordinates[get_move_target(move)], promoted_pieces[get_move_promoted(move)]);
-  else printf("%s%s\n", coordinates[get_move_src(move)], coordinates[get_move_target(move)]);
+  if (get_move_promoted(move)) printf("%s%s%c", coordinates[get_move_src(move)], coordinates[get_move_target(move)], promoted_pieces[get_move_promoted(move)]);
+  else printf("%s%s", coordinates[get_move_src(move)], coordinates[get_move_target(move)]);
 }
 
 
@@ -1406,9 +1408,338 @@ void perft_test(int depth)
   printf("Time: %ld\n\n", get_time_ms() - start);
 }
 
+int material_score[12] = {
+  100,   //white pawn score
+  300,   //white knight score
+  350,   //white bishop score
+  500,   //white rook score
+  1000,  //white queen score
+  10000, //white king score
+  -100,  //black pawn score
+  -300,  //black knight score
+  -350,  //black bishop score
+  -500,  //black rook score
+  -1000, //black queen score
+  -10000 //black king score
+};
+
+const int pawn_score[64] = 
+{
+    90,  90,  90,  90,  90,  90,  90,  90,
+    30,  30,  30,  40,  40,  30,  30,  30,
+    20,  20,  20,  30,  30,  30,  20,  20,
+    10,  10,  10,  20,  20,  10,  10,  10,
+     5,   5,  10,  20,  20,   5,   5,   5,
+     0,   0,   0,   5,   5,   0,   0,   0,
+     0,   0,   0, -10, -10,   0,   0,   0,
+     0,   0,   0,   0,   0,   0,   0,   0
+};
+
+const int knight_score[64] = 
+{
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5,   0,   0,  10,  10,   0,   0,  -5,
+    -5,   5,  20,  20,  20,  20,   5,  -5,
+    -5,  10,  20,  30,  30,  20,  10,  -5,
+    -5,  10,  20,  30,  30,  20,  10,  -5,
+    -5,   5,  20,  10,  10,  20,   5,  -5,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5, -10,   0,   0,   0,   0, -10,  -5
+};
+
+const int bishop_score[64] = 
+{
+     0,   0,   0,   0,   0,   0,   0,   0,
+     0,   0,   0,   0,   0,   0,   0,   0,
+     0,   0,   0,  10,  10,   0,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,  10,   0,   0,   0,   0,  10,   0,
+     0,  30,   0,   0,   0,   0,  30,   0,
+     0,   0, -10,   0,   0, -10,   0,   0
+
+};
+
+const int rook_score[64] =
+{
+    50,  50,  50,  50,  50,  50,  50,  50,
+    50,  50,  50,  50,  50,  50,  50,  50,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,  10,  20,  20,  10,   0,   0,
+     0,   0,   0,  20,  20,   0,   0,   0
+
+};
+
+const int king_score[64] = 
+{
+     0,   0,   0,   0,   0,   0,   0,   0,
+     0,   0,   5,   5,   5,   5,   0,   0,
+     0,   5,   5,  10,  10,   5,   5,   0,
+     0,   5,  10,  20,  20,  10,   5,   0,
+     0,   5,  10,  20,  20,  10,   5,   0,
+     0,   0,   5,  10,  10,   5,   0,   0,
+     0,   5,   5,  -5,  -5,   0,   5,   0,
+     0,   0,   5,   0, -15,   0,  10,   0
+};
+
+const int mirror_score[128] =
+{
+	a1, b1, c1, d1, e1, f1, g1, h1,
+	a2, b2, c2, d2, e2, f2, g2, h2,
+	a3, b3, c3, d3, e3, f3, g3, h3,
+	a4, b4, c4, d4, e4, f4, g4, h4,
+	a5, b5, c5, d5, e5, f5, g5, h5,
+	a6, b6, c6, d6, e6, f6, g6, h6,
+	a7, b7, c7, d7, e7, f7, g7, h7,
+	a8, b8, c8, d8, e8, f8, g8, h8
+};
+
+static inline int evaluate()
+{
+  int score = 0;
+  uint64_t bitboard;
+  int piece, square;
+
+  for (int bb_piece = P; bb_piece <= k; bb_piece++)
+  {
+    bitboard = piece_bitboards[bb_piece];
+    while (bitboard)
+    {
+      piece = bb_piece;
+      square = get_ls1b_index(bitboard);
+
+      score += material_score[piece];
+      
+      switch (piece)
+      {
+        case P : score += pawn_score[square]; break;
+        case N : score += knight_score[square]; break;
+        case B : score += bishop_score[square]; break;
+        case R : score += rook_score[square]; break;
+       // case Q : score += queen_score[square]; break;
+        case K : score += pawn_score[square]; break;
+        case p : score -= pawn_score[mirror_score[square]]; break;
+        case n : score -= knight_score[mirror_score[square]]; break;
+        case b : score -= bishop_score[mirror_score[square]]; break;
+        case r : score -= rook_score[mirror_score[square]]; break;
+        // case q : score -= queen_score[mirror_score[square]]; break;
+        case k : score -= king_score[mirror_score[square]]; break;
+      }
+      
+      pop_bit(&bitboard, square);
+    }
+  }
+  return (side_to_move == white) ? score : -score;
+}
+// MVV LVA [attacker][victim]
+static int mvv_lva[12][12] = {
+ 	105, 205, 305, 405, 505, 605,  105, 205, 305, 405, 505, 605,
+	104, 204, 304, 404, 504, 604,  104, 204, 304, 404, 504, 604,
+	103, 203, 303, 403, 503, 603,  103, 203, 303, 403, 503, 603,
+	102, 202, 302, 402, 502, 602,  102, 202, 302, 402, 502, 602,
+	101, 201, 301, 401, 501, 601,  101, 201, 301, 401, 501, 601,
+	100, 200, 300, 400, 500, 600,  100, 200, 300, 400, 500, 600,
+
+	105, 205, 305, 405, 505, 605,  105, 205, 305, 405, 505, 605,
+	104, 204, 304, 404, 504, 604,  104, 204, 304, 404, 504, 604,
+	103, 203, 303, 403, 503, 603,  103, 203, 303, 403, 503, 603,
+	102, 202, 302, 402, 502, 602,  102, 202, 302, 402, 502, 602,
+	101, 201, 301, 401, 501, 601,  101, 201, 301, 401, 501, 601,
+	100, 200, 300, 400, 500, 600,  100, 200, 300, 400, 500, 600
+};
+
+int ply;
+uint32_t best_move;
+
+static inline int score_move(uint32_t move)
+{
+  if (is_move_capture(move))
+  {
+    int target_piece = P;
+    int start_piece, end_piece;
+    if (side_to_move == white)
+    {
+      start_piece = p;
+      end_piece = k;
+    }
+    else
+    {
+      start_piece = P;
+      end_piece = K;  
+    }
+    for (int bb_piece = start_piece; bb_piece <= end_piece; bb_piece++)
+    {
+      if (get_bit(piece_bitboards[bb_piece], get_move_target(move)))
+      {
+        target_piece = bb_piece;
+        break;
+      }
+    }
+    return mvv_lva[get_move_piece(move)][target_piece];
+  }
+  else
+  {
+    
+  }
+  return 0;
+}
+
+static inline int sort_moves(moves *move_list)
+{
+  int move_scores[move_list->count];
+  for (int count = 0; count < move_list->count; count++)
+  {
+    move_scores[count] = score_move(move_list->moves[count]);
+  }
+  for (int current_move = 0; current_move < move_list->count; current_move++)
+  {
+    for (int next_move = current_move + 1; next_move < move_list->count; next_move++)
+    {
+      if (move_scores[current_move] < move_scores[next_move])
+      {
+        int temp_score = move_scores[current_move];
+        move_scores[current_move] = move_scores[next_move];
+        move_scores[next_move] = temp_score;
+                
+        int temp_move = move_list->moves[current_move];
+        move_list->moves[current_move] = move_list->moves[next_move];
+        move_list->moves[next_move] = temp_move;
+      }
+    }
+  }
+}
+
+void print_move_scores(moves *move_list)
+{
+  printf("Move scores:\n\n");
+  for (int count = 0; count < move_list->count; count++)
+  {
+    printf("move: ");
+    print_move(move_list->moves[count]);
+    printf("score: %d\n", score_move(move_list->moves[count]));
+  }
+}
+
+static inline int quiescence(int alpha, int beta)
+{
+  nodes++;
+  
+  int evaluation = evaluate();
+
+  if (evaluation >= beta)
+  {
+    return beta;
+  }
+  if (evaluation > alpha)
+  {
+    alpha = evaluation;
+  }
+
+  moves move_list[1];
+  generate_moves(move_list);
+  sort_moves(move_list);
+
+  for (int count = 0; count < move_list->count; count++)
+  {
+    board_state state;
+    copy_board(&state);
+
+    ply++;
+
+    if (make_move(move_list->moves[count], only_capture) == 0)
+    {
+      ply--;
+      continue;
+    }
+
+    int score = -quiescence(-beta, -alpha);
+
+    ply--;
+    
+    restore_board(&state);
+
+    //fail hard beta cutoff
+    if (score >= beta) return beta;//node fails high
+    if (score > alpha)
+    {
+      alpha = score;//principle variation node
+     
+    }
+  }
+
+  return alpha;
+}
+
+static inline int negamax(int alpha, int beta, int depth)
+{
+  if (depth == 0) return quiescence(alpha, beta);
+
+  nodes++;
+
+  int in_check = is_square_attacked((side_to_move ==  white) ? get_ls1b_index(piece_bitboards[K]) : get_ls1b_index(piece_bitboards[k]), side_to_move ^ 1);
+  if (in_check) depth++;
+  int legal_moves = 0;
+  uint32_t best_yet;
+  int old_alpha = alpha;
+  
+  moves move_list[1];
+  generate_moves(move_list);
+  sort_moves(move_list);
+  
+  for (int count = 0; count < move_list->count; count++)
+  {
+    board_state state;
+    copy_board(&state);
+
+    ply++;
+
+    if (make_move(move_list->moves[count], all_moves) == 0)
+    {
+      ply--;
+      continue;
+    }
+
+    legal_moves++;
+
+    int score = -negamax(-beta, -alpha, depth - 1);
+
+    ply--;
+    
+    restore_board(&state);
+
+    //fail hard beta cutoff
+    if (score >= beta) return beta;//node fails high
+    if (score > alpha)
+    {
+      alpha = score;//principle variation node
+      if (ply == 0) best_yet = move_list->moves[count];
+    }
+  }
+
+  if (legal_moves == 0)
+  {
+    if (in_check) return -49000 + ply;
+    else return 0;//draw
+  }
+  
+  if (old_alpha != alpha) best_move = best_yet;
+  
+  return alpha;
+}
+
 void search_position(int depth)
 {
-  printf("bestmove d2d4\n");
+  int score = negamax(-50000, 50000, depth);
+  if (best_move)
+  {
+    printf("info score cp %d depth %d nodes %ld\n", score, depth, nodes);
+    printf("bestmove ");
+    print_move(best_move);
+    printf("\n");
+  }
 }
 
 //UCI stuff
@@ -1537,7 +1868,16 @@ int main()
 {
   init_all();
 
-  uci_loop();  
+  int debug = 1;
+
+  if (debug)
+  {
+    printf("debugging");
+    parse_fen(tricky_position);
+    print_board();
+    search_position(1);
+  }
+  else uci_loop();
   
   return 0;
 }
