@@ -11,6 +11,7 @@
 #define tricky_position "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 "
 #define killer_position "rnbqkb1r/pp1p1pPp/8/2p1pP2/1P1P4/3P3P/P1P1P3/RNBQKBNR w KQkq e6 0 1 "
 #define cmk_position "r2q1rk1/ppp2ppp/2n1bn2/2b1p3/3pP3/3P1NPP/PPP1NPB1/R1BQ1RK1 b - - 0 9 "
+#define max_ply 64
 
 enum {
   a8, b8, c8, d8, e8, f8, g8, h8,
@@ -1551,11 +1552,11 @@ static int mvv_lva[12][12] = {
 	100, 200, 300, 400, 500, 600,  100, 200, 300, 400, 500, 600
 };
 
-uint32_t killer_moves[2][64];
+uint32_t killer_moves[2][max_ply];
 uint32_t past_moves[12][64];
 
-int pv_length[64];
-int pv_table[64][64];
+int pv_length[max_ply];
+int pv_table[max_ply][max_ply];
 
 int ply;//principle variation line
 
@@ -1686,6 +1687,8 @@ static inline int negamax(int alpha, int beta, int depth)
   
   if (depth == 0) return quiescence(alpha, beta);
 
+  if (ply > max_ply - 1) return evaluate();
+  
   nodes++;
 
   int in_check = is_square_attacked((side_to_move ==  white) ? get_ls1b_index(piece_bitboards[K]) : get_ls1b_index(piece_bitboards[k]), side_to_move ^ 1);
@@ -1757,14 +1760,26 @@ static inline int negamax(int alpha, int beta, int depth)
 
 void search_position(int depth)
 {
-  int score = negamax(-50000, 50000, depth);
-   printf("info score cp %d depth %d nodes %ld pv ", score, depth, nodes);
-  for (int count = 0; count < pv_length[0]; count++)
+
+  nodes = 0;
+  
+  memset(killer_moves, 0, sizeof(killer_moves));
+  memset(past_moves, 0, sizeof(past_moves));
+  memset(pv_table, 0, sizeof(pv_table));
+  memset(pv_length, 0, sizeof(pv_length));
+
+  for (int curr_depth = 1; curr_depth <= depth; curr_depth++)
   {
-    print_move(pv_table[0][count]);
-    printf(" ");
+    int score = negamax(-50000, 50000, depth);
+    printf("info score cp %d depth %d nodes %ld pv ", score, depth, nodes);
+
+    for (int count = 0; count < pv_length[0]; count++)
+    {
+      print_move(pv_table[0][count]);
+      printf(" ");
+    }
+    printf("\n");
   }
-  printf("\n");
   printf("bestmove ");
   print_move(pv_table[0][0]);
   printf("\n");
