@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1336,7 +1337,7 @@ static inline int make_move(uint32_t move, int move_flag)
   }
   else
   {
-    if (is_move_capture(move)) make_move(move, all_moves);
+    if (is_move_capture(move)) return make_move(move, all_moves);
     else return 0;
   }
   return 0;
@@ -1521,7 +1522,7 @@ static inline int evaluate()
         case B : score += bishop_score[square]; break;
         case R : score += rook_score[square]; break;
        // case Q : score += queen_score[square]; break;
-        case K : score += pawn_score[square]; break;
+        case K : score += king_score[square]; break;
         case p : score -= pawn_score[mirror_score[square]]; break;
         case n : score -= knight_score[mirror_score[square]]; break;
         case b : score -= bishop_score[mirror_score[square]]; break;
@@ -1557,11 +1558,43 @@ uint32_t past_moves[12][64];
 
 int pv_length[max_ply];
 int pv_table[max_ply][max_ply];
+int follow_pv, score_pv;
+int ply;//principal variation line
 
-int ply;//principle variation line
-
+static inline void enable_pv_scoring(moves *move_list)
+{
+  follow_pv = 0;
+  
+  for (int count = 0; count < move_list->count; count++)
+  {
+    if (pv_table[0][ply] == move_list->moves[count])
+    {
+      score_pv = 1;
+      follow_pv = 1;
+      
+    }
+  }  
+}
+/*
+Move ordering:
+1. pv move
+2. captures in mvv/lva
+3. 1st killer move
+4. 2nd killer move
+5. history moves
+6. unsorted moves
+*/
 static inline int score_move(uint32_t move)
 {
+  if (score_pv)
+  {
+    if (pv_table[0][ply] == move)
+    {
+      score_pv = 0;
+      return 20000;
+    }  
+  }
+  
   if (is_move_capture(move))
   {
     int target_piece = P;
@@ -1584,7 +1617,7 @@ static inline int score_move(uint32_t move)
         break;
       }
     }
-    return mvv_lva[get_move_piece(move)][target_piece];
+    return mvv_lva[get_move_piece(move)][target_piece] + 10000;
   }
   else
   {
@@ -1598,10 +1631,12 @@ static inline int score_move(uint32_t move)
 static inline void sort_moves(moves *move_list)
 {
   int move_scores[move_list->count];
+
   for (int count = 0; count < move_list->count; count++)
   {
     move_scores[count] = score_move(move_list->moves[count]);
   }
+
   for (int curr_move = 0; curr_move < move_list->count; curr_move++)
   {
     for (int next_move = curr_move + 1; next_move < move_list->count; next_move++)
@@ -1623,6 +1658,7 @@ static inline void sort_moves(moves *move_list)
 void print_move_scores(moves *move_list)
 {
   printf("Move scores:\n\n");
+
   for (int count = 0; count < move_list->count; count++)
   {
     printf("move: ");
@@ -1633,6 +1669,7 @@ void print_move_scores(moves *move_list)
 
 static inline int quiescence(int alpha, int beta)
 {
+  if (ply > max_ply - 1) return evaluate();
   nodes++;
   
   int evaluation = evaluate();
@@ -1641,6 +1678,7 @@ static inline int quiescence(int alpha, int beta)
   {
     return beta;
   }
+
   if (evaluation > alpha)
   {
     alpha = evaluation;
@@ -1681,6 +1719,9 @@ static inline int quiescence(int alpha, int beta)
   return alpha;
 }
 
+const int full_depth_moves = 4;
+const int reduction_limit = 3;
+
 static inline int negamax(int alpha, int beta, int depth)
 {
   pv_length[ply] = ply;
@@ -1695,9 +1736,35 @@ static inline int negamax(int alpha, int beta, int depth)
   if (in_check) depth++;
   int legal_moves = 0;
   
+  if (depth >= 3 && in_check == 0 && ply)
+  {
+    board_state state;
+    copy_board(&state);
+
+    ply++;
+    
+    side_to_move ^= 1;
+
+    enpassant = no_sq;
+
+    //depth - 1 - reduction
+    int score = -negamax(-beta, -beta + 1, depth - 1 - 2);
+
+    ply--;
+    
+    restore_board(&state);
+
+    if (score >= beta) return beta;
+  }
+  
   moves move_list[1];
   generate_moves(move_list);
+
+  if (follow_pv) enable_pv_scoring(move_list);
+
   sort_moves(move_list);
+  
+  int moves_searched = 0;
   
   for (int count = 0; count < move_list->count; count++)
   {
@@ -1714,12 +1781,27 @@ static inline int negamax(int alpha, int beta, int depth)
 
     legal_moves++;
 
-    int score = -negamax(-beta, -alpha, depth - 1);
+    int score;
+
+    if (moves_searched == 0) score = -negamax(-beta, -alpha, depth - 1);
+      //late move reduction
+    else
+    {
+      if (moves_searched >= full_depth_moves && depth >= reduction_limit && in_check == 0 && is_move_capture(move_list->moves[count]) == 0 && get_move_promoted(move_list->moves[count]) == 0) score = -negamax(-alpha - 1, -alpha, depth - 2);
+      else score = alpha + 1;
+
+      if (score > alpha)
+      {
+        score = -negamax(-alpha - 1, -alpha, depth - 1);
+        if ((score > alpha) && (score < beta)) score = -negamax(-beta, -alpha, depth - 1);
+      }
+    }
 
     ply--;
     
     restore_board(&state);
 
+    moves_searched++;
     //fail hard beta cutoff
     if (score >= beta)
     {
@@ -1730,6 +1812,7 @@ static inline int negamax(int alpha, int beta, int depth)
       }
       return beta;//node fails high
     }
+    
     if (score > alpha)
     {
       if (is_move_capture(move_list->moves[count]) == 0)
@@ -1745,6 +1828,7 @@ static inline int negamax(int alpha, int beta, int depth)
       {
         pv_table[ply][next_ply] = pv_table[ply + 1][next_ply];
       }
+
       pv_length[ply] = pv_length[ply + 1];
     }
   }
@@ -1760,18 +1844,37 @@ static inline int negamax(int alpha, int beta, int depth)
 
 void search_position(int depth)
 {
-
+  int score = 0;
   nodes = 0;
-  
+
+  follow_pv = 0;
+  score_pv = 0;
+
   memset(killer_moves, 0, sizeof(killer_moves));
   memset(past_moves, 0, sizeof(past_moves));
   memset(pv_table, 0, sizeof(pv_table));
   memset(pv_length, 0, sizeof(pv_length));
 
+  int alpha = -50000;
+  int beta = 50000;
+
   for (int curr_depth = 1; curr_depth <= depth; curr_depth++)
   {
-    int score = negamax(-50000, 50000, depth);
-    printf("info score cp %d depth %d nodes %ld pv ", score, depth, nodes);
+    follow_pv = 1;
+    
+    score = negamax(alpha, beta, curr_depth);
+
+    if ((score <= alpha) || (score >= beta))
+    {
+      alpha = -50000;
+      beta = 50000;
+      curr_depth--;
+      continue;
+    }
+    alpha = score - 50;
+    beta = score + 50;
+
+    printf("info score cp %d depth %d nodes %ld pv ", score, curr_depth, nodes);
 
     for (int count = 0; count < pv_length[0]; count++)
     {
@@ -1780,6 +1883,7 @@ void search_position(int depth)
     }
     printf("\n");
   }
+
   printf("bestmove ");
   print_move(pv_table[0][0]);
   printf("\n");
@@ -1882,7 +1986,7 @@ void uci_loop()
     if (!fgets(input, 2000, stdin)) break;
     if (input[0] == '\n') continue;
 
-    if (strncmp(input, "isready", 7) == 0)
+    if (strncmp(input, "is ready", 7) == 0)
     {
       printf("readyok\n");
       continue;
@@ -1911,7 +2015,7 @@ int main()
 {
   init_all();
 
-  int debug = 0;
+  int debug = 1;
 
   if (debug)
   {
