@@ -1,8 +1,9 @@
-#include <ctype.h>
+//#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <inttypes.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -107,6 +108,74 @@ uint64_t occupancy_bitboards[3];
 int side_to_move;
 int enpassant = no_sq;
 int castle;
+
+int quit;
+int moves_to_go = 30;
+int move_time = -1;
+int time;
+int inc;
+int start_time;
+int stop_time;
+int timeset;
+int stopped;
+
+int get_time_ms()
+{
+  struct timeval time_val;
+  gettimeofday(&time_val, NULL);
+  return time_val.tv_sec * 1000 + time_val.tv_usec / 1000;
+}
+
+int input_waiting()
+{
+  fd_set readfds;
+  struct timeval tv;
+  int fd = fileno(stdin);
+
+  FD_ZERO(&readfds);
+  FD_SET(fd, &readfds);
+
+  tv.tv_sec = 0;
+  tv.tv_usec = 0;
+
+  if (select(fd + 1, &readfds, NULL, NULL, &tv) < 0) return 0;
+
+  return FD_ISSET(fd, &readfds);
+}
+
+void read_input()
+{
+  int bytes;
+
+  char input[256] = "", *endc;
+
+  if (input_waiting())
+  {
+    stopped = 1;
+    do
+    {
+      bytes = read(fileno(stdin), input, 256);
+    }
+    while (bytes < 0);
+
+    endc = strchr(input, '\n');
+
+    if (endc) *endc = 0;
+
+    if (strlen(input) > 0)
+    {
+      if (!strncmp(input, "quit", 4)) quit = 1;
+      else if (!strncmp(input, "stop", 4)) quit = 1;
+    }
+  }
+}
+
+static void communicate()
+{
+  if (timeset == 1 && get_time_ms() > stop_time) stopped = 1;
+
+  read_input();
+}
 
 static inline int count_bits(uint64_t bitboard)
 {
@@ -1343,13 +1412,6 @@ static inline int make_move(uint32_t move, int move_flag)
   return 0;
 }
 
-int get_time_ms()
-{
-  struct timeval time_val;
-  gettimeofday(&time_val, NULL);
-  return time_val.tv_sec * 1000 + time_val.tv_usec / 1000;
-}
-
 long nodes;
 
 static inline void perft_driver(int depth)
@@ -1669,6 +1731,8 @@ void print_move_scores(moves *move_list)
 
 static inline int quiescence(int alpha, int beta)
 {
+  if ((nodes & 2047) == 0) communicate();
+  
   if (ply > max_ply - 1) return evaluate();
   nodes++;
   
@@ -1707,6 +1771,7 @@ static inline int quiescence(int alpha, int beta)
     
     restore_board(&state);
 
+    if (stopped == 1) return 0;
     //fail hard beta cutoff
     if (score >= beta) return beta;//node fails high
     if (score > alpha)
@@ -1724,6 +1789,8 @@ const int reduction_limit = 3;
 
 static inline int negamax(int alpha, int beta, int depth)
 {
+  if ((nodes & 2047) == 0) communicate();
+
   pv_length[ply] = ply;
   
   if (depth == 0) return quiescence(alpha, beta);
@@ -1754,6 +1821,8 @@ static inline int negamax(int alpha, int beta, int depth)
     
     restore_board(&state);
 
+    if (stopped == 1) return 0;
+    
     if (score >= beta) return beta;
   }
   
@@ -1800,6 +1869,8 @@ static inline int negamax(int alpha, int beta, int depth)
     ply--;
     
     restore_board(&state);
+
+    if (stopped == 1) return 0;
 
     moves_searched++;
     //fail hard beta cutoff
@@ -1860,9 +1931,13 @@ void search_position(int depth)
 
   for (int curr_depth = 1; curr_depth <= depth; curr_depth++)
   {
+    if (stopped == 1) break;
+
     follow_pv = 1;
     
     score = negamax(alpha, beta, curr_depth);
+
+    if (stopped == 1) break;
 
     if ((score <= alpha) || (score >= beta))
     {
@@ -1953,15 +2028,50 @@ void parse_position(char *command)
       curr_char++;
     }
   }
-  print_board();
 }
 
 void parse_go(char *command)
 {
   int depth = -1;
-  char *curr_depth = NULL;
-  if ((curr_depth = strstr(command, "depth"))) depth = atoi(curr_depth + 6);
-  else depth = 6;
+
+  time = -1;
+  inc = 0;
+  moves_to_go = 30;
+  move_time = -1;
+  timeset = 0;
+  stopped = 0;
+
+  char *argument = NULL;
+
+  if ((argument = strstr(command, "infinite"))) {}
+  if ((argument = strstr(command, "binc")) && side_to_move == black) inc = atoi(argument + 5);
+  if ((argument = strstr(command, "winc")) && side_to_move == white) inc = atoi(argument + 5);
+  if ((argument = strstr(command, "wtime")) && side_to_move == white) time = atoi(argument + 6);
+  if ((argument = strstr(command, "btime")) && side_to_move == black) time = atoi(argument + 6);
+  if ((argument = strstr(command, "movestogo"))) moves_to_go = atoi(argument + 10);
+  if ((argument = strstr(command, "movetime"))) move_time = atoi(argument + 9);
+  if ((argument = strstr(command, "depth"))) depth = atoi(argument + 6);
+
+  if (move_time != -1)
+  {
+    time = move_time;
+    moves_to_go = 1;
+  }
+
+  start_time = get_time_ms();
+
+  depth = depth;
+
+  if (time != -1)
+  {
+    timeset = 1;
+    time /= moves_to_go;
+    time -= 50;
+    if (time < 1) time = 1;
+    stop_time = start_time + time + inc;
+  }
+
+  if (depth == -1) depth = 64;
 
   search_position(depth);
 }
@@ -1972,10 +2082,6 @@ void uci_loop()
   setbuf(stdout, NULL);
 
   char input[2000];
-  
-  printf("id name BBC\n");
-  printf("id name Arthur\n");
-  printf("uciok\n");
 
   while (1)
   {
@@ -1986,7 +2092,7 @@ void uci_loop()
     if (!fgets(input, 2000, stdin)) break;
     if (input[0] == '\n') continue;
 
-    if (strncmp(input, "is ready", 7) == 0)
+    if (strncmp(input, "isready", 7) == 0)
     {
       printf("readyok\n");
       continue;
@@ -1997,8 +2103,8 @@ void uci_loop()
     else if (strncmp(input, "quit", 4) == 0) break;
     else if (strncmp(input, "uci", 3) == 0)
     {
-      printf("id name BBC\n");
-      printf("id name Arthur\n");
+      printf("id name BBC Arthur\n");
+      printf("id author Heemansh\n");
       printf("uciok\n");
     }
   }
@@ -2022,7 +2128,7 @@ int main()
     printf("debugging");
     parse_fen(tricky_position);
     print_board();
-    search_position(5);
+    search_position(6);
   }
   else uci_loop();
   
