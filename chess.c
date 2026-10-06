@@ -27,21 +27,21 @@ enum {
 };
 
 enum {
-  white,
-  black,
-  both
+  WHITE,
+  BLACK,
+  BOTH
 };
 
 enum {
-  rook,
-  bishop
+  ROOK,
+  BISHOP
 };
 
 enum {
-  wk = 1,
-  wq = 2,
-  bk = 4,
-  bq = 8
+  WK = 1,
+  WQ = 2,
+  BK = 4,
+  BQ = 8
 };
 
 enum {
@@ -246,7 +246,7 @@ void print_board()
 
   printf("Side to Move: %s\n", !side_to_move ? "white" : "black");
   printf("Enpassant: %s\n", (enpassant != no_sq) ? coordinates[enpassant] : "no");
-  printf("Castling: %c%c%c%c\n\n", (castle & wk) ? 'K' : '-', (castle & wq) ? 'Q' : '-', (castle & bk) ? 'k' : '-', (castle & bq) ? 'q' : '-');
+  printf("Castling: %c%c%c%c\n\n", (castle & WK) ? 'K' : '-', (castle & WQ) ? 'Q' : '-', (castle & BK) ? 'k' : '-', (castle & BQ) ? 'q' : '-');
 }
 
 void parse_fen(char *fen)
@@ -293,7 +293,7 @@ void parse_fen(char *fen)
   }
   fen++;
 
-  (*fen == 'w') ? (side_to_move = white) : (side_to_move = black);
+  (*fen == 'w') ? (side_to_move = WHITE) : (side_to_move = BLACK);
 
   fen += 2;
 
@@ -301,10 +301,10 @@ void parse_fen(char *fen)
   {
     switch (*fen)
     {
-      case 'K': castle |= wk; break;
-      case 'Q': castle |= wq; break;
-      case 'k': castle |= bk; break;
-      case 'q': castle |= bq; break;
+      case 'K': castle |= WK; break;
+      case 'Q': castle |= WQ; break;
+      case 'k': castle |= BK; break;
+      case 'q': castle |= BQ; break;
       case '-': break;
     }
     fen++;
@@ -324,14 +324,14 @@ void parse_fen(char *fen)
   
   for (int piece = P; piece <=K; piece++)
   {
-    occupancy_bitboards[white] |= piece_bitboards[piece];
+    occupancy_bitboards[WHITE] |= piece_bitboards[piece];
   }
   for (int piece = p; piece <= k; piece++)
   {
-    occupancy_bitboards[black] |= piece_bitboards[piece];
+    occupancy_bitboards[BLACK] |= piece_bitboards[piece];
   }
-  occupancy_bitboards[both] |= occupancy_bitboards[white];
-  occupancy_bitboards[both] |= occupancy_bitboards[black];
+  occupancy_bitboards[BOTH] |= occupancy_bitboards[WHITE];
+  occupancy_bitboards[BOTH] |= occupancy_bitboards[BLACK];
 }
 
 const uint64_t not_file_a = 18374403900871474942ULL;
@@ -753,11 +753,11 @@ void init_magic_numbers()
 {
   for (int square = 0; square < 64; square++)
   {
-    rook_magic_numbers[square] = find_magic_number(square, rook_relevant_occupancy_bits[square], rook);
+    rook_magic_numbers[square] = find_magic_number(square, rook_relevant_occupancy_bits[square], ROOK);
   }
   for (int square = 0; square < 64; square++)
   {    
-    bishop_magic_numbers[square] = find_magic_number(square, bishop_relevant_occupancy_bits[square], bishop);
+    bishop_magic_numbers[square] = find_magic_number(square, bishop_relevant_occupancy_bits[square], BISHOP);
   }
 }
 
@@ -765,8 +765,8 @@ void init_leaper_attacks()
 {
   for (int square = 0; square < 64; square++)
   {
-    pawn_attacks[white][square] = mask_pawn_attacks(white, square);
-    pawn_attacks[black][square] = mask_pawn_attacks(black, square);
+    pawn_attacks[WHITE][square] = mask_pawn_attacks(WHITE, square);
+    pawn_attacks[BLACK][square] = mask_pawn_attacks(BLACK, square);
 
     knight_attacks[square] = mask_knight_attacks(square);
 
@@ -847,19 +847,19 @@ static inline uint64_t get_queen_attacks(int square, uint64_t occupancy)
 
 static inline int is_square_attacked(int square, int side)
 {
-  if ((side == white) && (pawn_attacks[black][square] & piece_bitboards[P])) return 1;
+  if ((side == WHITE) && (pawn_attacks[BLACK][square] & piece_bitboards[P])) return 1;
 
-  if ((side == black) && (pawn_attacks[white][square] & piece_bitboards[p])) return 1;
+  if ((side == BLACK) && (pawn_attacks[WHITE][square] & piece_bitboards[p])) return 1;
 
-  if (knight_attacks[square] & (side == white ? piece_bitboards[N] : piece_bitboards[n])) return 1;
+  if (knight_attacks[square] & (side == WHITE ? piece_bitboards[N] : piece_bitboards[n])) return 1;
 
-  if (get_bishop_attacks(square, occupancy_bitboards[both]) & ((side == white) ? piece_bitboards[B] : piece_bitboards[b])) return 1;
+  if (get_bishop_attacks(square, occupancy_bitboards[BOTH]) & ((side == WHITE) ? piece_bitboards[B] : piece_bitboards[b])) return 1;
 
-  if (get_rook_attacks(square, occupancy_bitboards[both]) & ((side == white) ? piece_bitboards[R] : piece_bitboards[r])) return 1;
+  if (get_rook_attacks(square, occupancy_bitboards[BOTH]) & ((side == WHITE) ? piece_bitboards[R] : piece_bitboards[r])) return 1;
 
-  if (get_queen_attacks(square, occupancy_bitboards[both]) & ((side == white) ? piece_bitboards[Q] : piece_bitboards[q])) return 1;
+  if (get_queen_attacks(square, occupancy_bitboards[BOTH]) & ((side == WHITE) ? piece_bitboards[Q] : piece_bitboards[q])) return 1;
 
-  if (king_attacks[square] & ((side == white) ? piece_bitboards[K] : piece_bitboards[k])) return 1;
+  if (king_attacks[square] & ((side == WHITE) ? piece_bitboards[K] : piece_bitboards[k])) return 1;
   
   return 0;
 }
@@ -981,7 +981,7 @@ static inline void generate_moves(moves *move_list)
   {
     bitboard = piece_bitboards[piece];
         
-    if (side_to_move == white)
+    if (side_to_move == WHITE)
     {
       if (piece == P)
       {
@@ -990,7 +990,7 @@ static inline void generate_moves(moves *move_list)
           src_sq = get_ls1b_index(bitboard);
           target_sq = src_sq - 8;
             
-          if (!(target_sq < a8) && !get_bit(occupancy_bitboards[both], target_sq))
+          if (!(target_sq < a8) && !get_bit(occupancy_bitboards[BOTH], target_sq))
           {
             if (src_sq >= a7 && src_sq <= h7)
             {
@@ -1003,10 +1003,10 @@ static inline void generate_moves(moves *move_list)
             {
               add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                        
-              if ((src_sq >= a2 && src_sq <= h2) && !get_bit(occupancy_bitboards[both], target_sq - 8)) add_move(move_list, encode_move(src_sq, target_sq - 8, piece, 0, 0, 1, 0, 0));
+              if ((src_sq >= a2 && src_sq <= h2) && !get_bit(occupancy_bitboards[BOTH], target_sq - 8)) add_move(move_list, encode_move(src_sq, target_sq - 8, piece, 0, 0, 1, 0, 0));
             }
           }
-          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[black];
+          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[BLACK];
           while (attacks)
           {
             target_sq = get_ls1b_index(attacks);
@@ -1038,19 +1038,19 @@ static inline void generate_moves(moves *move_list)
 
       if (piece == K)
       {
-        if (castle & wk)
+        if (castle & WK)
         {
-          if (!get_bit(occupancy_bitboards[both], f1) && !get_bit(occupancy_bitboards[both], g1))
+          if (!get_bit(occupancy_bitboards[BOTH], f1) && !get_bit(occupancy_bitboards[BOTH], g1))
           {
-            if(!is_square_attacked(e1, black) && !is_square_attacked(f1, black)) add_move(move_list, encode_move(e1, g1, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e1, BLACK) && !is_square_attacked(f1, BLACK)) add_move(move_list, encode_move(e1, g1, piece, 0, 0, 0, 0, 1));
           }
         }
 
-        if (castle & wq)
+        if (castle & WQ)
         {
-          if (!get_bit(occupancy_bitboards[both], d1) && !get_bit(occupancy_bitboards[both], c1) && !get_bit(occupancy_bitboards[both], b1))
+          if (!get_bit(occupancy_bitboards[BOTH], d1) && !get_bit(occupancy_bitboards[BOTH], c1) && !get_bit(occupancy_bitboards[BOTH], b1))
           {
-            if(!is_square_attacked(e1, black) && !is_square_attacked(d1, black)) add_move(move_list, encode_move(e1, c1, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e1, BLACK) && !is_square_attacked(d1, BLACK)) add_move(move_list, encode_move(e1, c1, piece, 0, 0, 0, 0, 1));
           }
         }
       }
@@ -1065,7 +1065,7 @@ static inline void generate_moves(moves *move_list)
                    
           target_sq = src_sq + 8;
                   
-          if (!(target_sq > h1) && !get_bit(occupancy_bitboards[both], target_sq))
+          if (!(target_sq > h1) && !get_bit(occupancy_bitboards[BOTH], target_sq))
           {
             if (src_sq >= a2 && src_sq <= h2)
             {
@@ -1079,11 +1079,11 @@ static inline void generate_moves(moves *move_list)
             {
               add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                           
-              if ((src_sq >= a7 && src_sq <= h7) && !get_bit(occupancy_bitboards[both], target_sq + 8)) add_move(move_list, encode_move(src_sq, target_sq + 8, piece, 0, 0, 1, 0, 0));
+              if ((src_sq >= a7 && src_sq <= h7) && !get_bit(occupancy_bitboards[BOTH], target_sq + 8)) add_move(move_list, encode_move(src_sq, target_sq + 8, piece, 0, 0, 1, 0, 0));
             }
           }
                   
-          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[white];
+          attacks = pawn_attacks[side_to_move][src_sq] & occupancy_bitboards[WHITE];
           while (attacks)
           {
             target_sq = get_ls1b_index(attacks);
@@ -1115,38 +1115,38 @@ static inline void generate_moves(moves *move_list)
       }
       if (piece == k)
       {
-        if (castle & bk)
+        if (castle & BK)
         {
-          if (!get_bit(occupancy_bitboards[both], f8) && !get_bit(occupancy_bitboards[both], g8))
+          if (!get_bit(occupancy_bitboards[BOTH], f8) && !get_bit(occupancy_bitboards[BOTH], g8))
           {
-            if(!is_square_attacked(e8, white) && !is_square_attacked(f8, white)) add_move(move_list, encode_move(e8, g8, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e8, WHITE) && !is_square_attacked(f8, WHITE)) add_move(move_list, encode_move(e8, g8, piece, 0, 0, 0, 0, 1));
           }
         }
 
-        if (castle & bq)
+        if (castle & BQ)
         {
-          if (!get_bit(occupancy_bitboards[both], d8) && !get_bit(occupancy_bitboards[both], c8) && !get_bit(occupancy_bitboards[both], b8))
+          if (!get_bit(occupancy_bitboards[BOTH], d8) && !get_bit(occupancy_bitboards[BOTH], c8) && !get_bit(occupancy_bitboards[BOTH], b8))
           {
-            if(!is_square_attacked(e8, white) && !is_square_attacked(d8, white)) add_move(move_list, encode_move(e8, c8, piece, 0, 0, 0, 0, 1));
+            if(!is_square_attacked(e8, WHITE) && !is_square_attacked(d8, WHITE)) add_move(move_list, encode_move(e8, c8, piece, 0, 0, 0, 0, 1));
           }
         }
       }
     }
         
         // genarate knight moves
-    if ((side_to_move == white) ? piece == N : piece == n)
+    if ((side_to_move == WHITE) ? piece == N : piece == n)
     {
       while (bitboard)
       {
         src_sq = get_ls1b_index(bitboard);
                 
-        attacks = knight_attacks[src_sq] & ((side_to_move == white) ? ~occupancy_bitboards[white] : ~occupancy_bitboards[black]);
+        attacks = knight_attacks[src_sq] & ((side_to_move == WHITE) ? ~occupancy_bitboards[WHITE] : ~occupancy_bitboards[BLACK]);
                 
         while (attacks)
         {
           target_sq = get_ls1b_index(attacks);    
                     
-          if (!get_bit(((side_to_move == white) ? occupancy_bitboards[black] : occupancy_bitboards[white]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
+          if (!get_bit(((side_to_move == WHITE) ? occupancy_bitboards[BLACK] : occupancy_bitboards[WHITE]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                     
           else add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 1, 0, 0, 0));
                     
@@ -1157,19 +1157,19 @@ static inline void generate_moves(moves *move_list)
       }
     }    
         // generate bishop moves
-    if ((side_to_move == white) ? piece == B : piece == b)
+    if ((side_to_move == WHITE) ? piece == B : piece == b)
     {
       while (bitboard)
       {
         src_sq = get_ls1b_index(bitboard);
                 
-        attacks = get_bishop_attacks(src_sq, occupancy_bitboards[both]) & ((side_to_move == white) ? ~occupancy_bitboards[white] : ~occupancy_bitboards[black]);
+        attacks = get_bishop_attacks(src_sq, occupancy_bitboards[BOTH]) & ((side_to_move == WHITE) ? ~occupancy_bitboards[WHITE] : ~occupancy_bitboards[BLACK]);
                 
         while (attacks)
         {
           target_sq = get_ls1b_index(attacks);    
                     
-          if (!get_bit(((side_to_move == white) ? occupancy_bitboards[black] : occupancy_bitboards[white]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
+          if (!get_bit(((side_to_move == WHITE) ? occupancy_bitboards[BLACK] : occupancy_bitboards[WHITE]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                     
           else add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 1, 0, 0, 0));
                     
@@ -1180,19 +1180,19 @@ static inline void generate_moves(moves *move_list)
       }
     }       
         // generate rook moves
-    if ((side_to_move == white) ? piece == R : piece == r)
+    if ((side_to_move == WHITE) ? piece == R : piece == r)
     {
       while (bitboard)
       {
         src_sq = get_ls1b_index(bitboard);
                 
-        attacks = get_rook_attacks(src_sq, occupancy_bitboards[both]) & ((side_to_move == white) ? ~occupancy_bitboards[white] : ~occupancy_bitboards[black]);
+        attacks = get_rook_attacks(src_sq, occupancy_bitboards[BOTH]) & ((side_to_move == WHITE) ? ~occupancy_bitboards[WHITE] : ~occupancy_bitboards[BLACK]);
                 
         while (attacks)
         {
           target_sq = get_ls1b_index(attacks);    
                     
-          if (!get_bit(((side_to_move == white) ? occupancy_bitboards[black] : occupancy_bitboards[white]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
+          if (!get_bit(((side_to_move == WHITE) ? occupancy_bitboards[BLACK] : occupancy_bitboards[WHITE]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                     
           else add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 1, 0, 0, 0));
                     
@@ -1203,19 +1203,19 @@ static inline void generate_moves(moves *move_list)
       }
     }       
         // generate queen moves
-    if ((side_to_move == white) ? piece == Q : piece == q)
+    if ((side_to_move == WHITE) ? piece == Q : piece == q)
     {
       while (bitboard)
       {
         src_sq = get_ls1b_index(bitboard);
                 
-        attacks = get_queen_attacks(src_sq, occupancy_bitboards[both]) & ((side_to_move == white) ? ~occupancy_bitboards[white] : ~occupancy_bitboards[black]);
+        attacks = get_queen_attacks(src_sq, occupancy_bitboards[BOTH]) & ((side_to_move == WHITE) ? ~occupancy_bitboards[WHITE] : ~occupancy_bitboards[BLACK]);
                 
         while (attacks)
         {
           target_sq = get_ls1b_index(attacks);    
                     
-          if (!get_bit(((side_to_move == white) ? occupancy_bitboards[black] : occupancy_bitboards[white]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
+          if (!get_bit(((side_to_move == WHITE) ? occupancy_bitboards[BLACK] : occupancy_bitboards[WHITE]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                     
           else add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 1, 0, 0, 0));
                     
@@ -1226,19 +1226,19 @@ static inline void generate_moves(moves *move_list)
       }
     }    
         // generate king moves
-    if ((side_to_move == white) ? piece == K : piece == k)
+    if ((side_to_move == WHITE) ? piece == K : piece == k)
     {
       while (bitboard)
       {
         src_sq = get_ls1b_index(bitboard);
                 
-        attacks = king_attacks[src_sq] & ((side_to_move == white) ? ~occupancy_bitboards[white] : ~occupancy_bitboards[black]);
+        attacks = king_attacks[src_sq] & ((side_to_move == WHITE) ? ~occupancy_bitboards[WHITE] : ~occupancy_bitboards[BLACK]);
                 
         while (attacks)
         {
           target_sq = get_ls1b_index(attacks);    
                     
-          if (!get_bit(((side_to_move == white) ? occupancy_bitboards[black] : occupancy_bitboards[white]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
+          if (!get_bit(((side_to_move == WHITE) ? occupancy_bitboards[BLACK] : occupancy_bitboards[WHITE]), target_sq)) add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 0, 0, 0, 0));
                     
           else add_move(move_list, encode_move(src_sq, target_sq, piece, 0, 1, 0, 0, 0));
                     
@@ -1314,7 +1314,7 @@ static inline int make_move(uint32_t move, int move_flag)
     {
       int start_piece, end_piece;
 
-      if (side_to_move == white)
+      if (side_to_move == WHITE)
       {
         start_piece = p;
         end_piece = k;
@@ -1337,7 +1337,7 @@ static inline int make_move(uint32_t move, int move_flag)
 
     if (promoted)
     {
-      pop_bit(&piece_bitboards[(side_to_move == white) ? P : p], target_sq);
+      pop_bit(&piece_bitboards[(side_to_move == WHITE) ? P : p], target_sq);
       
       set_bit(&piece_bitboards[promoted], target_sq);
       
@@ -1345,13 +1345,13 @@ static inline int make_move(uint32_t move, int move_flag)
 
     if (enpass)
     {
-      (side_to_move == white) ? pop_bit(&piece_bitboards[p], target_sq + 8) : pop_bit(&piece_bitboards[P], target_sq - 8);
+      (side_to_move == WHITE) ? pop_bit(&piece_bitboards[p], target_sq + 8) : pop_bit(&piece_bitboards[P], target_sq - 8);
     }
     enpassant = no_sq;
 
     if (double_push)
     {
-      (side_to_move == white) ? (enpassant = target_sq + 8) : (enpassant = target_sq - 8);
+      (side_to_move == WHITE) ? (enpassant = target_sq + 8) : (enpassant = target_sq - 8);
     }
 
     if (castling)
@@ -1386,18 +1386,18 @@ static inline int make_move(uint32_t move, int move_flag)
 
     for (int bb_piece = P; bb_piece <= K; bb_piece++)
     {
-      occupancy_bitboards[white] |= piece_bitboards[bb_piece];
+      occupancy_bitboards[WHITE] |= piece_bitboards[bb_piece];
     }
     for (int bb_piece = p; bb_piece <= k; bb_piece++)
     {
-      occupancy_bitboards[black] |= piece_bitboards[bb_piece];
+      occupancy_bitboards[BLACK] |= piece_bitboards[bb_piece];
     }
-    occupancy_bitboards[both] |= occupancy_bitboards[white];
-    occupancy_bitboards[both] |= occupancy_bitboards[black];
+    occupancy_bitboards[BOTH] |= occupancy_bitboards[WHITE];
+    occupancy_bitboards[BOTH] |= occupancy_bitboards[BLACK];
 
     side_to_move ^= 1;
     //checking legality of moves
-    if (is_square_attacked((side_to_move == white) ? get_ls1b_index(piece_bitboards[k]) : get_ls1b_index(piece_bitboards[K]), side_to_move))
+    if (is_square_attacked((side_to_move == WHITE) ? get_ls1b_index(piece_bitboards[k]) : get_ls1b_index(piece_bitboards[K]), side_to_move))
     {
       restore_board(&state);
       return 0;
@@ -1596,7 +1596,7 @@ static inline int evaluate()
       pop_bit(&bitboard, square);
     }
   }
-  return (side_to_move == white) ? score : -score;
+  return (side_to_move == WHITE) ? score : -score;
 }
 // MVV LVA [attacker][victim]
 static int mvv_lva[12][12] = {
@@ -1661,7 +1661,7 @@ static inline int score_move(uint32_t move)
   {
     int target_piece = P;
     int start_piece, end_piece;
-    if (side_to_move == white)
+    if (side_to_move == WHITE)
     {
       start_piece = p;
       end_piece = k;
@@ -1799,7 +1799,7 @@ static inline int negamax(int alpha, int beta, int depth)
   
   nodes++;
 
-  int in_check = is_square_attacked((side_to_move ==  white) ? get_ls1b_index(piece_bitboards[K]) : get_ls1b_index(piece_bitboards[k]), side_to_move ^ 1);
+  int in_check = is_square_attacked((side_to_move ==  WHITE) ? get_ls1b_index(piece_bitboards[K]) : get_ls1b_index(piece_bitboards[k]), side_to_move ^ 1);
   if (in_check) depth++;
   int legal_moves = 0;
   
@@ -2044,10 +2044,10 @@ void parse_go(char *command)
   char *argument = NULL;
 
   if ((argument = strstr(command, "infinite"))) {}
-  if ((argument = strstr(command, "binc")) && side_to_move == black) inc = atoi(argument + 5);
-  if ((argument = strstr(command, "winc")) && side_to_move == white) inc = atoi(argument + 5);
-  if ((argument = strstr(command, "wtime")) && side_to_move == white) time = atoi(argument + 6);
-  if ((argument = strstr(command, "btime")) && side_to_move == black) time = atoi(argument + 6);
+  if ((argument = strstr(command, "binc")) && side_to_move == BLACK) inc = atoi(argument + 5);
+  if ((argument = strstr(command, "winc")) && side_to_move == WHITE) inc = atoi(argument + 5);
+  if ((argument = strstr(command, "wtime")) && side_to_move == WHITE) time = atoi(argument + 6);
+  if ((argument = strstr(command, "btime")) && side_to_move == BLACK) time = atoi(argument + 6);
   if ((argument = strstr(command, "movestogo"))) moves_to_go = atoi(argument + 10);
   if ((argument = strstr(command, "movetime"))) move_time = atoi(argument + 9);
   if ((argument = strstr(command, "depth"))) depth = atoi(argument + 6);
@@ -2113,8 +2113,8 @@ void uci_loop()
 void init_all()
 {
   init_leaper_attacks();
-  init_slider_attacks(bishop);
-  init_slider_attacks(rook);
+  init_slider_attacks(BISHOP);
+  init_slider_attacks(ROOK);
 }
 
 int main()
