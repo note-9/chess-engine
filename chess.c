@@ -109,6 +109,8 @@ int side_to_move;
 int enpassant = no_sq;
 int castle;
 
+uint64_t hash_key;
+
 int quit;
 int moves_to_go = 30;
 int move_time = -1;
@@ -198,140 +200,6 @@ static inline int get_ls1b_index(uint64_t bitboard)
   {
     return -1;
   }
-}
-
-void print_bitboard(uint64_t bitboard)
-{
-  printf("\n");
-  for (int rank = 0; rank < 8; rank++)
-  {
-    for (int file = 0; file < 8; file++)
-    {
-      int square = rank * 8 + file;
-      if (!file)
-      {
-        printf("%d  ", 8 - rank);
-      }
-      printf(" %d", get_bit(bitboard, square) ? 1 : 0);
-    }
-    printf("\n");
-  }
-  printf("\n    a b c d e f g h\n\n");
-  printf("Bitboard: %" PRIu64 "\n", bitboard);
-}
-
-void print_board()
-{
-  printf("\n");
-  for (int rank = 0; rank < 8; rank++)
-  {
-    for (int file = 0; file < 8; file++)
-    {
-      int square = rank * 8 + file;
-      if (!file)
-      {
-        printf("%d  ", 8 - rank);
-      }
-      int piece = -1;
-      for (int piece_index = 0; piece_index < 12; piece_index++)
-      {
-        if (get_bit(piece_bitboards[piece_index], square)) piece = piece_index;
-      }
-
-      printf(" %c", (piece == -1) ? '.' : ascii_pieces[piece]);
-    }
-    printf("\n");
-  }
-  printf("\n    a b c d e f g h\n\n");
-
-  printf("Side to Move: %s\n", !side_to_move ? "white" : "black");
-  printf("Enpassant: %s\n", (enpassant != no_sq) ? coordinates[enpassant] : "no");
-  printf("Castling: %c%c%c%c\n\n", (castle & WK) ? 'K' : '-', (castle & WQ) ? 'Q' : '-', (castle & BK) ? 'k' : '-', (castle & BQ) ? 'q' : '-');
-}
-
-void parse_fen(char *fen)
-{
-  memset(piece_bitboards, 0ULL, sizeof(piece_bitboards));
-  memset(occupancy_bitboards, 0ULL, sizeof(occupancy_bitboards));
-  side_to_move = 0;
-  enpassant = no_sq;
-  castle = 0;
-
-  for (int rank = 0; rank < 8; rank++)
-  {
-    for (int file = 0; file < 8; file++)
-    {
-      int square = rank * 8 + file;
-
-      if ((*fen >= 'a' && *fen <= 'z') || (*fen >= 'A' && *fen <= 'Z'))
-      {
-        int piece = char_pieces[*fen];
-        set_bit(&piece_bitboards[piece], square);
-        fen++;
-      }
-
-      if (*fen >= '0' && *fen <= '9')
-      {
-        int offset = *fen - '0';
-
-        int piece = -1;
-        for (int piece_index = 0; piece_index < 12; piece_index++)
-        {
-          if (get_bit(piece_bitboards[piece_index], square)) piece = piece_index;
-        }
-        if (piece == -1)
-        {
-          file--;
-        }
-
-        file += offset;
-        fen++;
-      }
-
-      if (*fen == '/') fen++;
-    }
-  }
-  fen++;
-
-  (*fen == 'w') ? (side_to_move = WHITE) : (side_to_move = BLACK);
-
-  fen += 2;
-
-  while (*fen != ' ')
-  {
-    switch (*fen)
-    {
-      case 'K': castle |= WK; break;
-      case 'Q': castle |= WQ; break;
-      case 'k': castle |= BK; break;
-      case 'q': castle |= BQ; break;
-      case '-': break;
-    }
-    fen++;
-  }
-  fen++;
-
-  if (*fen != '-')
-  {
-    int file = fen[0] - 'a';
-    int rank = 8 - (fen[1] - '0');
-    enpassant = rank * 8 + file;
-  }
-  else
-  {
-    enpassant = no_sq;
-  }
-  
-  for (int piece = P; piece <=K; piece++)
-  {
-    occupancy_bitboards[WHITE] |= piece_bitboards[piece];
-  }
-  for (int piece = p; piece <= k; piece++)
-  {
-    occupancy_bitboards[BLACK] |= piece_bitboards[piece];
-  }
-  occupancy_bitboards[BOTH] |= occupancy_bitboards[WHITE];
-  occupancy_bitboards[BOTH] |= occupancy_bitboards[BLACK];
 }
 
 const uint64_t not_file_a = 18374403900871474942ULL;
@@ -759,6 +627,193 @@ void init_magic_numbers()
   {    
     bishop_magic_numbers[square] = find_magic_number(square, bishop_relevant_occupancy_bits[square], BISHOP);
   }
+}
+
+
+uint64_t piece_keys[12][64];
+uint64_t enpass_keys[64];
+uint64_t castle_keys[16];
+uint64_t side_to_move_key;
+
+void init_random_keys()
+{
+  random_state = 1804289383;
+  for (int piece = P; piece <= k; piece++)
+  {
+    for (int square = 0; square < 64; square++)
+    {
+      piece_keys[piece][square] = get_random_u64_number();
+    }  
+  }
+  for (int square = 0; square < 64; square++)
+  {
+    enpass_keys[square] = get_random_u64_number();
+  }
+  for (int index = 0; index < 16; index++)
+  {
+    castle_keys[index] = get_random_u64_number();
+  }
+  side_to_move_key = get_random_u64_number();
+}
+
+uint64_t generate_hash_key()
+{
+  uint64_t final_key = 0;
+
+  uint64_t tmp_bitboard;
+
+  for (int piece = P; piece <= k; piece++)
+  {
+    tmp_bitboard = piece_bitboards[piece];
+    while (tmp_bitboard)
+    {
+      int square = get_ls1b_index(tmp_bitboard);
+      final_key ^= piece_keys[piece][square];
+      pop_bit(&tmp_bitboard, square);
+    }
+  }
+  if (enpassant != no_sq) final_key ^= enpass_keys[enpassant];
+  final_key ^= castle_keys[castle];
+  if (side_to_move == BLACK) final_key ^= side_to_move_key;
+  
+  return final_key;  
+}
+
+void print_bitboard(uint64_t bitboard)
+{
+  printf("\n");
+  for (int rank = 0; rank < 8; rank++)
+  {
+    for (int file = 0; file < 8; file++)
+    {
+      int square = rank * 8 + file;
+      if (!file)
+      {
+        printf("%d  ", 8 - rank);
+      }
+      printf(" %d", get_bit(bitboard, square) ? 1 : 0);
+    }
+    printf("\n");
+  }
+  printf("\n    a b c d e f g h\n\n");
+  printf("Bitboard: %" PRIu64 "\n", bitboard);
+}
+
+void print_board()
+{
+  printf("\n");
+  for (int rank = 0; rank < 8; rank++)
+  {
+    for (int file = 0; file < 8; file++)
+    {
+      int square = rank * 8 + file;
+      if (!file)
+      {
+        printf("%d  ", 8 - rank);
+      }
+      int piece = -1;
+      for (int piece_index = 0; piece_index < 12; piece_index++)
+      {
+        if (get_bit(piece_bitboards[piece_index], square)) piece = piece_index;
+      }
+
+      printf(" %c", (piece == -1) ? '.' : ascii_pieces[piece]);
+    }
+    printf("\n");
+  }
+  printf("\n    a b c d e f g h\n\n");
+
+  printf("Side to Move: %s\n", !side_to_move ? "white" : "black");
+  printf("Enpassant: %s\n", (enpassant != no_sq) ? coordinates[enpassant] : "no");
+  printf("Castling: %c%c%c%c\n", (castle & WK) ? 'K' : '-', (castle & WQ) ? 'Q' : '-', (castle & BK) ? 'k' : '-', (castle & BQ) ? 'q' : '-');
+  printf("Hash Key: %lx\n\n", hash_key);
+}
+
+void parse_fen(char *fen)
+{
+  memset(piece_bitboards, 0ULL, sizeof(piece_bitboards));
+  memset(occupancy_bitboards, 0ULL, sizeof(occupancy_bitboards));
+  side_to_move = 0;
+  enpassant = no_sq;
+  castle = 0;
+
+  for (int rank = 0; rank < 8; rank++)
+  {
+    for (int file = 0; file < 8; file++)
+    {
+      int square = rank * 8 + file;
+
+      if ((*fen >= 'a' && *fen <= 'z') || (*fen >= 'A' && *fen <= 'Z'))
+      {
+        int piece = char_pieces[*fen];
+        set_bit(&piece_bitboards[piece], square);
+        fen++;
+      }
+
+      if (*fen >= '0' && *fen <= '9')
+      {
+        int offset = *fen - '0';
+
+        int piece = -1;
+        for (int piece_index = 0; piece_index < 12; piece_index++)
+        {
+          if (get_bit(piece_bitboards[piece_index], square)) piece = piece_index;
+        }
+        if (piece == -1)
+        {
+          file--;
+        }
+
+        file += offset;
+        fen++;
+      }
+
+      if (*fen == '/') fen++;
+    }
+  }
+  fen++;
+
+  (*fen == 'w') ? (side_to_move = WHITE) : (side_to_move = BLACK);
+
+  fen += 2;
+
+  while (*fen != ' ')
+  {
+    switch (*fen)
+    {
+      case 'K': castle |= WK; break;
+      case 'Q': castle |= WQ; break;
+      case 'k': castle |= BK; break;
+      case 'q': castle |= BQ; break;
+      case '-': break;
+    }
+    fen++;
+  }
+  fen++;
+
+  if (*fen != '-')
+  {
+    int file = fen[0] - 'a';
+    int rank = 8 - (fen[1] - '0');
+    enpassant = rank * 8 + file;
+  }
+  else
+  {
+    enpassant = no_sq;
+  }
+  
+  for (int piece = P; piece <=K; piece++)
+  {
+    occupancy_bitboards[WHITE] |= piece_bitboards[piece];
+  }
+  for (int piece = p; piece <= k; piece++)
+  {
+    occupancy_bitboards[BLACK] |= piece_bitboards[piece];
+  }
+  occupancy_bitboards[BOTH] |= occupancy_bitboards[WHITE];
+  occupancy_bitboards[BOTH] |= occupancy_bitboards[BLACK];
+
+  hash_key = generate_hash_key();
 }
 
 void init_leaper_attacks()
@@ -2115,6 +2170,7 @@ void init_all()
   init_leaper_attacks();
   init_slider_attacks(BISHOP);
   init_slider_attacks(ROOK);
+  init_random_keys();
 }
 
 int main()
@@ -2125,10 +2181,9 @@ int main()
 
   if (debug)
   {
-    printf("debugging");
+    printf("\nDebugging");
     parse_fen(tricky_position);
     print_board();
-    search_position(6);
   }
   else uci_loop();
   
